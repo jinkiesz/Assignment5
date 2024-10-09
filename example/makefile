@@ -3,25 +3,17 @@
 # Compiler and flags
 CXX = g++
 CXXFLAGS = -Wall -Wextra -std=c++11 -pthread
-
 TARGETS = chat_server chat_client
+
 all: $(TARGETS)
 
-# compile chat and server
-chat_server: server.o
-	$(CXX) $(CXXFLAGS) -o chat_server server.o
-chat_client: client.o
-	$(CXX) $(CXXFLAGS) -o chat_client client.o
-
-
-# compile the server and client into object file
-server.o: server.cpp
-	$(CXX) $(CXXFLAGS) -c server.cpp
-client.o: client.cpp
-	$(CXX) $(CXXFLAGS) -c client.cpp
-
+# Compile chat_server and chat_client directly from their source files
+chat_server: server.cpp
+	$(CXX) $(CXXFLAGS) -o chat_server server.cpp
+chat_client: client.cpp
+	$(CXX) $(CXXFLAGS) -o chat_client client.cpp
 
 clean:
-	rm -f *.o $(TARGETS)
+	rm -f $(TARGETS)
 
-# to run write make in the terminal
+# to run, type "make" in the terminal
