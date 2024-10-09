@@ -1,0 +1,5 @@
+
+*.o
+example/chat_server
+example/chat_client
+.DS_Store
