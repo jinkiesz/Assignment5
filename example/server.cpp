@@ -21,12 +21,12 @@
 #include <map>
 #include <vector>
 #include <list>
+#include <netinet/in.h>  
 
 #include <iostream>
 #include <sstream>
 #include <thread>
 #include <map>
-
 #include <unistd.h>
 
 // fix SOCK_NONBLOCK for OSX
@@ -38,16 +38,15 @@
 #define BACKLOG  5          // Allowed length of queue of waiting connections
 std::map<int, int> messagesWaiting; 
 int serverPort; // Global variable to store the server port
-// Simple class for handling connections from clients.
-//
-// Client(int socket) - socket to send/receive traffic from client.
+
+
 class Client
 {
   public:
     int sock;              // socket of client connection
     std::string name;  // Limit length of name of client's user
     std::string ip_address;
-    int port; 
+    int port = serverPort; 
     std::string group_id;  // Group ID for the client
 
     Client(int socket, std::string ip, int port) : sock(socket), ip_address(ip), port(port) {} 
@@ -55,13 +54,20 @@ class Client
     ~Client(){}            // Virtual destructor defined for base class
 };
 
-// Note: map is not necessarily the most efficient method to use here,
-// especially for a server with large numbers of simulataneous connections,
-// where performance is also expected to be an issue.
-//
-// Quite often a simple array can be used as a lookup table, 
-// (indexed on socket no.) sacrificing memory for speed.
 
+class Server
+{
+public:
+    std::string ip_address;
+    int port = serverPort;
+    std::string group_id;
+
+    Server(std::string ip, int port, std::string group_id) : ip_address(ip), port(port), group_id(group_id) {}
+
+    ~Server() {}
+};
+
+std::list<Server> connectedServers;
 std::map<int, Client*> clients; // Lookup table for per Client information
 std::map<std::string, Client*> groupClients; // Lookup table for group ID to Client
 
@@ -178,8 +184,7 @@ void closeClient(int clientSocket, fd_set *openSockets, int *maxfds)
 }
 
 // Process command from client on the server
-void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
-                   char *buffer)
+void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds, char *buffer)
 {
     std::vector<std::string> tokens;
     std::string token;
@@ -207,10 +212,6 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
     else if (tokens[0].compare("LEAVE") == 0)
     {
         std::cout << "Processing LEAVE command" << std::endl;
-        // Close the socket, and leave the socket handling
-        // code to deal with tidying up clients etc. when
-        // select() detects the OS has torn down the connection.
-
         closeClient(clientSocket, openSockets, maxfds);
     }
     else if (tokens[0].compare("WHO") == 0)
@@ -222,12 +223,8 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
         {
             msg += names.second->name + ",";
         }
-        // Reducing the msg length by 1 loses the excess "," - which
-        // granted is totally cheating.
         send(clientSocket, msg.c_str(), msg.length() - 1, 0);
     }
-    // This is slightly fragile, since it's relying on the order
-    // of evaluation of the if statement.
     else if ((tokens[0].compare("MSG") == 0) && (tokens[1].compare("ALL") == 0))
     {
         std::string msg;
@@ -264,20 +261,34 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
             clients[clientSocket]->group_id = fromGroupId;
             groupClients[fromGroupId] = clients[clientSocket];
 
+            // Store the server information
+            connectedServers.push_back(Server(clients[clientSocket]->ip_address, clients[clientSocket]->port, fromGroupId));
+
             // Construct the SERVERS response
             std::string response = "SERVERS";
-            for (const auto &server : groupClients)
+            for (const auto &server : connectedServers)
             {
-                response += "," + server.first + "," + server.second->ip_address + "," + std::to_string(serverPort) + ";";
+                response += "," + server.group_id + "," + server.ip_address + "," + std::to_string(serverPort) + ";";
             }
             send(clientSocket, response.c_str(), response.size(), 0);
         }
+    }
+    else if (tokens[0].compare("LISTSERVERS") == 0)
+    {
+        // Construct the SERVERS response
+        std::string response = "SERVERS";
+        for (const auto &server : connectedServers)
+        {
+            response += "," + server.group_id + "," + server.ip_address + "," + std::to_string(serverPort) + ";";
+        }
+        send(clientSocket, response.c_str(), response.size(), 0);
     }
     else
     {
         std::cout << "Unknown command from client:" << buffer << std::endl;
     }
 }
+
 
 int main(int argc, char *argv[])
 {
