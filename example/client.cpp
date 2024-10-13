@@ -52,6 +52,22 @@ void listenServer(int serverSocket)
     }
 }
 
+void handleHELO(int serverSocket)
+{
+    int nwrite;                               // No. bytes written to server
+    char buffer[1025];                        // buffer for writing to server
+
+    bzero(buffer, sizeof(buffer));
+    strcpy(buffer, "HELO,A_17\n");              // Include group number 17 in the message
+
+    nwrite = send(serverSocket, buffer, strlen(buffer), 0);
+
+    if (nwrite == -1)
+    {
+        perror("send() to server failed: ");
+    }
+}
+
 int main(int argc, char* argv[])
 {
    struct addrinfo hints, *svr;              // Network host entry for server
@@ -115,7 +131,7 @@ int main(int argc, char* argv[])
          exit(0);
        }
    }
-
+   handleHELO(serverSocket);
     // Listen and print replies from server
    std::thread serverThread(listenServer, serverSocket);
 
