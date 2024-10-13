@@ -273,7 +273,7 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds, char *buf
             connectedServers.push_back(Server(clients[clientSocket]->ip_address, clients[clientSocket]->port, fromGroupId));
 
             // Construct the SERVERS response
-            std::string response = "Response from server: SERVERS: ";
+            std::string response = "Response from server: SERVERS";
             for (const auto &server : connectedServers)
             {
                 response += "," + server.group_id + "," + server.ip_address + "," + std::to_string(serverPort) + ";";
@@ -284,7 +284,7 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds, char *buf
     else if (tokens[0].compare("LISTSERVERS") == 0)
     {
         // Construct the SERVERS response
-        std::string response = "Response from server: LISTSERVERS: ";
+        std::string response = "Response from server: LISTSERVERS";
         for (const auto &server : connectedServers)
         {
             response += "," + server.group_id + "," + server.ip_address + "," + std::to_string(serverPort) + ";";
