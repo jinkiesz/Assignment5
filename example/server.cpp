@@ -28,6 +28,7 @@
 #include <thread>
 #include <map>
 #include <unistd.h>
+#include <queue>
 
 // fix SOCK_NONBLOCK for OSX
 #ifndef SOCK_NONBLOCK
@@ -37,6 +38,7 @@
 
 #define BACKLOG  5          // Allowed length of queue of waiting connections
 std::map<int, int> messagesWaiting; 
+std::map<std::string, std::queue<std::string>> groupMessages;
 int serverPort; // Global variable to store the server port
 // Simple class for handling connections from clients.
 //
@@ -150,6 +152,11 @@ void closeClient(int clientSocket, fd_set *openSockets, int *maxfds)
     {
         std::cerr << "Error: Client not found in clients map." << std::endl;
         return;
+    }
+    //Removing from groupClients map if it exists
+    if (!clients[clientSocket]->group_id.empty())
+    {
+        groupClients.erase(clients[clientSocket]->group_id);
     }
 
     printf("Client closed connection: %d\n", clientSocket);
@@ -266,7 +273,7 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds, char *buf
             connectedServers.push_back(Server(clients[clientSocket]->ip_address, clients[clientSocket]->port, fromGroupId));
 
             // Construct the SERVERS response
-            std::string response = "SERVERS";
+            std::string response = "Response from server: SERVERS: ";
             for (const auto &server : connectedServers)
             {
                 response += "," + server.group_id + "," + server.ip_address + "," + std::to_string(serverPort) + ";";
@@ -277,12 +284,55 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds, char *buf
     else if (tokens[0].compare("LISTSERVERS") == 0)
     {
         // Construct the SERVERS response
-        std::string response = "SERVERS";
+        std::string response = "Response from server: LISTSERVERS: ";
         for (const auto &server : connectedServers)
         {
             response += "," + server.group_id + "," + server.ip_address + "," + std::to_string(serverPort) + ";";
         }
         send(clientSocket, response.c_str(), response.size(), 0);
+    }
+    else if (tokens[0].compare("SENDMSG") == 0) {
+        if(token.size() >= 3) {
+
+            std::string groupId = tokens[1];
+
+            std::string message = tokens[2];
+
+            //Placeholder for later making sure message starts and ends with correct SOH...
+
+            groupMessages[groupId].push(message);
+
+            //send ACK?
+        }
+    }
+    else if (tokens[0].compare("GETMSG") == 0) {
+        //looks for messages in the group message queue 
+        if(token.size() >= 2) {
+
+            std::string groupId = tokens[1];
+
+            //Check if there are message on queue
+            if (groupMessages.find(groupId) != groupMessages.end() && !groupMessages[groupId].empty()) {
+
+                //making sure sending the first message on queue
+                std::string message = groupMessages[groupId].front();
+                groupMessages[groupId].pop();
+
+                //Sending message to the client
+                std::string response = "MSG," + groupId + "," + message;
+                send(clientSocket, response.c_str(), response.size(), 0);       //Might want to switch to a seperate function later
+            }
+            //No messages on queue
+            else {
+                std::string NoMessage = "NO_MSG," + groupId;
+                send(clientSocket, NoMessage.c_str(), NoMessage.size(), 0); 
+            }
+        } 
+        else {
+            std::string errorMsg = "ERROR,GETMSG: GETMSG requires GroupID";
+            send(clientSocket, errorMsg.c_str(), errorMsg.size(), 0);
+        }
+
     }
     else
     {
