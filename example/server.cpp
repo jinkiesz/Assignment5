@@ -38,15 +38,16 @@
 #define BACKLOG  5          // Allowed length of queue of waiting connections
 std::map<int, int> messagesWaiting; 
 int serverPort; // Global variable to store the server port
-
-
+// Simple class for handling connections from clients.
+//
+// Client(int socket) - socket to send/receive traffic from client.
 class Client
 {
   public:
     int sock;              // socket of client connection
     std::string name;  // Limit length of name of client's user
     std::string ip_address;
-    int port = serverPort; 
+    int port; 
     std::string group_id;  // Group ID for the client
 
     Client(int socket, std::string ip, int port) : sock(socket), ip_address(ip), port(port) {} 
@@ -59,7 +60,7 @@ class Server
 {
 public:
     std::string ip_address;
-    int port = serverPort;
+    int port;
     std::string group_id;
 
     Server(std::string ip, int port, std::string group_id) : ip_address(ip), port(port), group_id(group_id) {}
