@@ -3,7 +3,7 @@
 //
 // Command line: ./chat_server 4000 
 //
-// Author: Jacky Mallett (jacky@ru.is)
+// Code based on code from Jacky Mallett (jacky@ru.is)
 //
 #include <stdio.h>
 #include <errno.h>
@@ -30,16 +30,26 @@
 #include <unistd.h>
 #include <queue>
 
+#define SOH 0x01 // Start of Header (SOH)
+#define EOT 0x04 // End of message (EOT)
+
+std::string serverGroupId;
+std::string serverIpAddress;
+
 // fix SOCK_NONBLOCK for OSX
 #ifndef SOCK_NONBLOCK
 #include <fcntl.h>
-#define SOCK_NONBLOCK O_NONBLOCK
 #endif
+
+
 
 #define BACKLOG  5          // Allowed length of queue of waiting connections
 std::map<int, int> messagesWaiting; 
 std::map<std::string, std::queue<std::string>> groupMessages;
 int serverPort; // Global variable to store the server port
+
+
+
 // Simple class for handling connections from clients.
 //
 // Client(int socket) - socket to send/receive traffic from client.
@@ -191,17 +201,112 @@ void closeClient(int clientSocket, fd_set *openSockets, int *maxfds)
     clients.erase(clientSocket);
 }
 
+// formatting and sending message
+void sendMessage(int sock, const std::string &message) {
+    std::string formattedMessage;
+    formattedMessage += SOH;
+    formattedMessage += message;
+    formattedMessage += EOT;
+
+    send(sock, formattedMessage.c_str(), formattedMessage.size(), 0);
+}
+
+//Creating the "SERVERS" command back to server
+std::string createServersResponse() {
+    std::string response = "SERVERS";
+
+    // Adding to SERVERS COMMAND
+    response += "," + serverGroupId + "," + serverIpAddress + "," + std::to_string(serverPort) + ";";
+
+    // Add connected servers' information
+    for (const auto &server : connectedServers) {
+        response += server.group_id + "," + server.ip_address + "," + std::to_string(server.port) + ";";
+    }
+
+    return response;
+}
+
+void sendServersResponse(int serverSocket) {
+    // Build the SERVERS response
+    std::string response = createServersResponse();
+
+    // Send the response
+    sendMessage(serverSocket, response);
+}
+
+
+// Process command from Server to server
+void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds, char *buffer){
+    //Removing SOH and EOT characters
+    std::string message(buffer);
+    if (message.front() == SOH) {
+        message.erase(0, 1); // Remove SOH
+    }
+    if (message.back() == EOT) {
+        message.pop_back(); // Remove EOT
+    }
+
+    std::vector<std::string> tokens;
+    std::stringstream stream(message);
+    std::string token;
+
+    while (std::getline(stream, token, ',')) {
+        tokens.push_back(token);
+    }
+
+    // Print debugging output in the correct order
+    std::cout << "Received command: " << tokens[0] << std::endl;
+    std::cout << "Full command: " << buffer << std::endl;
+
+    //Hello command processing
+    if (tokens[0] == "HELO" && tokens.size() == 2) {
+        std::string fromGroupId = tokens[1];
+
+        // Get other server's IP address and port
+        struct sockaddr_in peer_addr;
+        socklen_t peer_addr_len = sizeof(peer_addr);
+        getpeername(serverSocket, (struct sockaddr*)&peer_addr, &peer_addr_len);
+        std::string fromIpAddress = inet_ntoa(peer_addr.sin_addr);
+        int fromPort = ntohs(peer_addr.sin_port);
+
+        // Store the connecting server's information
+        connectedServers.push_back(Server(fromIpAddress, fromPort, fromGroupId));
+
+        // Send the SERVERS response
+        sendServersResponse(serverSocket);
+
+    } else if (tokens[0] == "SERVERS") {
+        // Send the SERVERS response
+        std::string response = createServersResponse();
+        sendMessage(serverSocket, response);
+
+    } else {
+        std::cout << "Unknown command from server: " << buffer << std::endl;
+    }
+
+
+}
+
 // Process command from client on the server
 void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds, char *buffer)
 {
+    // Check if the message is from a server (contains SOH and EOT)
+    if (buffer[0] == SOH) {
+        // This is a server command
+        serverCommand(clientSocket, openSockets, maxfds, buffer);
+        return;
+    }
+    
+    
     std::vector<std::string> tokens;
     std::string token;
 
     // Split command from client into tokens for parsing
     std::stringstream stream(buffer);
 
-    while (std::getline(stream, token, ','))
+    while (std::getline(stream, token, ',')) {
         tokens.push_back(token);
+    }
 
     // Trim trailing newline characters from the last token
     if (!tokens.empty() && !tokens.back().empty() && tokens.back().back() == '\n')
@@ -354,16 +459,21 @@ int main(int argc, char *argv[])
     socklen_t clientLen;
     char buffer[1025]; // buffer for reading from clients
 
+
     if (argc != 2)
     {
         printf("Usage: chat_server <ip port>\n");
         exit(0);
     }
 
+    serverGroupId = 17;
+    serverIpAddress = "130.208.246.249";
+    serverPort = atoi(argv[1]);
+
     // Setup socket for server to listen to
 
-    listenSock = open_socket(atoi(argv[1]));
-    printf("Listening on port: %d\n", atoi(argv[1]));
+    listenSock = open_socket(serverPort);
+    printf("Listening on port: %d\n", serverPort);
 
     if (listen(listenSock, BACKLOG) < 0)
     {
