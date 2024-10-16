@@ -36,10 +36,12 @@
 std::string serverGroupId;
 std::string serverIpAddress;
 
-// fix SOCK_NONBLOCK for OSX
+// SOCK_NONBLOCK for OSX and mb linux ?
 #ifndef SOCK_NONBLOCK
 #include <fcntl.h>
+#define SOCK_NONBLOCK O_NONBLOCK
 #endif
+
 
 
 
