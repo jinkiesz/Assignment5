@@ -1,5 +1,5 @@
 
 *.o
-example/chat_server
-example/chat_client
+chat_server
+chat_client
 .DS_Store
