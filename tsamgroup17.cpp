@@ -33,10 +33,10 @@
 #define SOH 0x01 // Start of Header (SOH)
 #define EOT 0x04 // End of message (EOT)
 
-extern std::list<Server> connectedServers;
-extern std::string serverGroupId;
-extern std::string serverIpAddress;
-extern int serverPort;
+//extern std::list<Server> connectedServers;
+std::string serverGroupId;
+std::string serverIpAddress;
+
 
 // SOCK_NONBLOCK for OSX and mb linux ?
 #ifndef SOCK_NONBLOCK
@@ -538,6 +538,7 @@ int main(int argc, char *argv[])
 
     // Connect to remote server 
     int remoteServerSock = connectToServer("130.208.246.249", 5001);
+    std::cout << "remoteserversock:  " << std::to_string(remoteServerSock) << std::endl;
     if (remoteServerSock != -1) {
         FD_SET(remoteServerSock, &openSockets);
         maxfds = std::max(maxfds, remoteServerSock);
@@ -546,7 +547,7 @@ int main(int argc, char *argv[])
     }
 
     // while connected keep checking server command
-    serverCommand(remoteServerSock, &openSockets, &maxfds, "HELO,A5_17");
+    serverCommand(remoteServerSock, &openSockets, &maxfds, "Helo");
     // print connectedservers list
 
 
@@ -589,7 +590,8 @@ int main(int argc, char *argv[])
                 // Get client IP address and port
                 std::string clientIp = inet_ntoa(client.sin_addr);
                 int clientPort = ntohs(client.sin_port);
-
+                // SEND HELO HERE
+                sendHeloMessage(remoteServerSock);
                 // create a new client to store information.
                 clients[clientSock] = new Client(clientSock, clientIp, clientPort);
 
@@ -608,6 +610,7 @@ int main(int argc, char *argv[])
 
                     if (FD_ISSET(client->sock, &readSockets))
                     {
+                        std:: cout << std:: to_string (client->sock) << std::endl;
                         // recv() == 0 means client has closed connection
                         if (recv(client->sock, buffer, sizeof(buffer), MSG_DONTWAIT) == 0)
                         {
