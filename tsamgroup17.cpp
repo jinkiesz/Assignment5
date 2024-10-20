@@ -324,6 +324,12 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds, char *buf
     {
         clients[clientSocket]->name = tokens[1];
     }
+    else if ((tokens[0].compare("CONNECTTO") == 0) && (tokens.size() == 2))
+    {   
+        // client gives server port and asks server to connect to another server on the network
+        std::cout << "Processing CONNECTTO command" << std::endl;
+        
+    }
     else if (tokens[0].compare("LEAVE") == 0)
     {
         std::cout << "Processing LEAVE command" << std::endl;
@@ -446,6 +452,35 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds, char *buf
         std::cout << "Unknown command from client:" << buffer << std::endl;
     }
 }
+int connectToServer(const std::string& ip, int port) {
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0) {
+        perror("Cannot create socket");
+        return -1;
+    }
+
+    struct sockaddr_in serverAddr;
+    serverAddr.sin_family = AF_INET;
+    serverAddr.sin_port = htons(port);
+
+    if (inet_pton(AF_INET, ip.c_str(), &serverAddr.sin_addr) <= 0) {
+        perror("Invalid address/ Address not supported");
+        return -1;
+    }
+
+    if (connect(sock, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0) {
+        perror("Connection Failed");
+        return -1;
+    }
+
+    return sock;
+}
+
+void sendHeloMessage(int sock) {
+    std::string heloCommand = "HELO," + serverGroupId; // Construct HELO message with the server's group ID
+    sendMessage(sock, heloCommand); // Send the HELO message using the existing sendMessage function
+    std::cout << "Sent: " << heloCommand << std::endl;
+}
 
 
 int main(int argc, char *argv[])
@@ -468,7 +503,7 @@ int main(int argc, char *argv[])
         exit(0);
     }
 
-    serverGroupId = 17;
+    serverGroupId = "A5_17";
     serverIpAddress = "130.208.246.249";
     serverPort = atoi(argv[1]);
 
@@ -489,9 +524,19 @@ int main(int argc, char *argv[])
         FD_SET(listenSock, &openSockets);
         maxfds = listenSock;
     }
-
     finished = false;
 
+
+    // Connect to remote server 
+    int remoteServerSock = connectToServer("130.208.246.249", 5001);
+    if (remoteServerSock != -1) {
+        FD_SET(remoteServerSock, &openSockets);
+        maxfds = std::max(maxfds, remoteServerSock);
+        printf("Connected to remote server\n");
+        sendHeloMessage(remoteServerSock);
+    }
+    
+    // Main server loop - accept and handle client connections
     while (!finished)
     {
         // Get modifiable copy of readSockets
