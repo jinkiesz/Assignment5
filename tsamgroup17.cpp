@@ -33,8 +33,10 @@
 #define SOH 0x01 // Start of Header (SOH)
 #define EOT 0x04 // End of message (EOT)
 
-std::string serverGroupId;
-std::string serverIpAddress;
+extern std::list<Server> connectedServers;
+extern std::string serverGroupId;
+extern std::string serverIpAddress;
+extern int serverPort;
 
 // SOCK_NONBLOCK for OSX and mb linux ?
 #ifndef SOCK_NONBLOCK
@@ -273,15 +275,22 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds, char *buf
 
         // Store the connecting server's information
         connectedServers.push_back(Server(fromIpAddress, fromPort, fromGroupId));
-
         // Send the SERVERS response
         sendServersResponse(serverSocket);
 
     } else if (tokens[0] == "SERVERS") {
+        printf("Received SERVERS command from server\n");
         // Send the SERVERS response
-        std::string response = createServersResponse();
-        sendMessage(serverSocket, response);
+        // Collect information from the SERVERS command about connected servers
+        // Add servers from the SERVERS command to the connectedServers list
+        //Server command format: SERVERS,group_id,ip_address,port;group_id,ip_address,port;...
+        for (size_t i = 1; i < tokens.size(); i += 3) {
+            std::string group_id = tokens[i];
+            std::string ip_address = tokens[i + 1];
+            int port = std::stoi(tokens[i + 2]);
 
+            connectedServers.push_back(Server(ip_address, port, group_id));
+        }
     } else {
         std::cout << "Unknown command from server: " << buffer << std::endl;
     }
@@ -535,6 +544,18 @@ int main(int argc, char *argv[])
         printf("Connected to remote server\n");
         sendHeloMessage(remoteServerSock);
     }
+
+    // while connected keep checking server command
+    serverCommand(remoteServerSock, &openSockets, &maxfds, "HELO,A5_17");
+    // print connectedservers list
+
+
+    // Create a new client object for the remote server
+    Client *remoteServerClinet = new Client(remoteServerSock, "130.208.246.249", 5001);
+    //add client1 to clinet map
+    clients[remoteServerSock] = remoteServerClinet;
+
+
     
     // Main server loop - accept and handle client connections
     while (!finished)
@@ -590,6 +611,8 @@ int main(int argc, char *argv[])
                         // recv() == 0 means client has closed connection
                         if (recv(client->sock, buffer, sizeof(buffer), MSG_DONTWAIT) == 0)
                         {
+                            // print buffer
+                            printf("Buffer: %s\n", buffer);
                             disconnectedClients.push_back(client);
                             closeClient(client->sock, &openSockets, &maxfds);
                         }
