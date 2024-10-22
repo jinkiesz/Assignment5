@@ -22,13 +22,16 @@
 #include <vector>
 #include <list>
 #include <netinet/in.h>  
-
+#include <ifaddrs.h> // for getting network interface addresses
+#include <net/if.h>  // for base interface definitions
 #include <iostream>
 #include <sstream>
 #include <thread>
 #include <map>
 #include <unistd.h>
 #include <queue>
+#include <mutex>
+
 
 #define SOH 0x01 // Start of Header (SOH)
 #define EOT 0x04 // End of message (EOT)
@@ -36,7 +39,8 @@
 //extern std::list<Server> connectedServers;
 std::string serverGroupId;
 std::string serverIpAddress;
-
+std::mutex serverMutex;
+std::string A17serverIpAddress;
 
 // SOCK_NONBLOCK for OSX and mb linux ?
 #ifndef SOCK_NONBLOCK
@@ -220,7 +224,7 @@ std::string createServersResponse() {
     std::string response = "SERVERS";
 
     // Adding to SERVERS COMMAND
-    response += "," + serverGroupId + "," + serverIpAddress + "," + std::to_string(serverPort) + ";";
+    response += "," + serverGroupId + "," + A17serverIpAddress + "," + std::to_string(serverPort) + ";";
 
     // Add connected servers' information
     for (const auto &server : connectedServers) {
@@ -263,20 +267,26 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds, char *buf
     std::cout << "Full command: " << buffer << std::endl;
 
     //Hello command processing
-    if (tokens[0] == "HELO" && tokens.size() == 2) {
+    if (tokens[0] == "HELO" && tokens.size() >= 2) {
         std::string fromGroupId = tokens[1];
 
-        // Get other server's IP address and port
         struct sockaddr_in peer_addr;
         socklen_t peer_addr_len = sizeof(peer_addr);
-        getpeername(serverSocket, (struct sockaddr*)&peer_addr, &peer_addr_len);
-        std::string fromIpAddress = inet_ntoa(peer_addr.sin_addr);
-        int fromPort = ntohs(peer_addr.sin_port);
+        if (getpeername(serverSocket, (struct sockaddr*)&peer_addr, &peer_addr_len) == 0) {
+            char host[NI_MAXHOST];
+            if (getnameinfo((struct sockaddr *)&peer_addr, sizeof(peer_addr), 
+                            host, sizeof(host), NULL, 0, NI_NUMERICHOST) == 0) {
+                std::string fromIpAddress = host;
+                int fromPort = ntohs(peer_addr.sin_port);
 
-        // Store the connecting server's information
-        connectedServers.push_back(Server(fromIpAddress, fromPort, fromGroupId));
-        // Send the SERVERS response
-        sendServersResponse(serverSocket);
+                // Store the connecting server's information
+                connectedServers.push_back(Server(fromIpAddress, fromPort, fromGroupId));
+                std::cout << "Added server " << fromGroupId << " at " << fromIpAddress << ":" << fromPort << std::endl;
+
+                // Optionally send a response back to the connected server
+                sendServersResponse(serverSocket);
+            }
+        }
 
     } else if (tokens[0] == "SERVERS") {
         printf("Received SERVERS command from server\n");
@@ -285,11 +295,19 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds, char *buf
         // Add servers from the SERVERS command to the connectedServers list
         //Server command format: SERVERS,group_id,ip_address,port;group_id,ip_address,port;...
         for (size_t i = 1; i < tokens.size(); i += 3) {
-            std::string group_id = tokens[i];
-            std::string ip_address = tokens[i + 1];
-            int port = std::stoi(tokens[i + 2]);
+            if (i + 2 < tokens.size()) { // Ensure there are enough tokens
+                std::string group_id = tokens[i];
+                std::string ip_address = tokens[i + 1];
+                int port = 0;
+                try {
+                    port = std::stoi(tokens[i + 2]);
+                } catch (const std::invalid_argument& e) {
+                    std::cerr << "Invalid port number: " << tokens[i + 2] << std::endl;
+                    continue; // Skip this iteration
+                }
 
-            connectedServers.push_back(Server(ip_address, port, group_id));
+                connectedServers.push_back(Server(ip_address, port, group_id));
+            }
         }
     } else {
         std::cout << "Unknown command from server: " << buffer << std::endl;
@@ -490,7 +508,49 @@ void sendHeloMessage(int sock) {
     sendMessage(sock, heloCommand); // Send the HELO message using the existing sendMessage function
     std::cout << "Sent: " << heloCommand << std::endl;
 }
+void sendKeepAlive(int sock, int newMessages) {
+    std::string keepAliveCommand = "KEEPALIVE," + std::to_string(newMessages);
+    sendMessage(sock, keepAliveCommand);
+    std::cout << "Sent: " << keepAliveCommand << std::endl;
+}
+void periodicKeepAlive(int sock) {
+    while (true) {
+        std::this_thread::sleep_for(std::chrono::minutes(1)); // Sleep for one minute
 
+        // Lock to safely access shared data
+        std::lock_guard<std::mutex> guard(serverMutex);
+        int newMessages = messagesWaiting[sock]; // Get the number of new messages waiting
+
+        sendKeepAlive(sock, newMessages); // Send the KEEPALIVE message
+    }
+}
+
+std::string getServerIP() {
+    struct ifaddrs *interfaces, *iface;
+    std::string ip_address = "127.0.0.1";  // Default to localhost
+
+    if (getifaddrs(&interfaces) == 0) {  // Get interfaces
+        for (iface = interfaces; iface != nullptr; iface = iface->ifa_next) {
+            if (iface->ifa_addr && iface->ifa_addr->sa_family == AF_INET) { // Check for IPv4
+                if (!(iface->ifa_flags & IFF_LOOPBACK)) {  // Skip loopback interface
+                    char host[NI_MAXHOST];
+                    const int family = iface->ifa_addr->sa_family;
+                    if (getnameinfo(iface->ifa_addr,
+                                    (family == AF_INET) ? sizeof(struct sockaddr_in) :
+                                                          sizeof(struct sockaddr_in6),
+                                    host, NI_MAXHOST,
+                                    nullptr, 0, NI_NUMERICHOST) == 0) {
+                        ip_address = host;  // Get the first non-loopback IPv4 address
+                        break;
+                    }
+                }
+            }
+        }
+        freeifaddrs(interfaces); // Free memory
+    }
+
+    return ip_address;
+}
 
 int main(int argc, char *argv[])
 {
@@ -511,6 +571,9 @@ int main(int argc, char *argv[])
         printf("Usage: chat_server <ip port>\n");
         exit(0);
     }
+
+    A17serverIpAddress = getServerIP();
+    std::cout << "Server IP Address: " << A17serverIpAddress << std::endl;
 
     serverGroupId = "A5_17";
     serverIpAddress = "130.208.246.249";
@@ -549,6 +612,8 @@ int main(int argc, char *argv[])
     // while connected keep checking server command
     serverCommand(remoteServerSock, &openSockets, &maxfds, "Helo");
     // print connectedservers list
+    std::thread keepAliveThread(periodicKeepAlive, remoteServerSock);
+    keepAliveThread.detach();
 
 
     // Create a new client object for the remote server
