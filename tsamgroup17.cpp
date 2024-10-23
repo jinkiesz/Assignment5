@@ -553,10 +553,6 @@ void periodicKeepAlive(int sock) {
     }
 }
 
-// Get the IP address of the server
-std::string getServerIP() {
-    struct ifaddrs *interfaces, *iface;
-    std::string ip_address = "127.0.0.1";  // Default to localhost
 
 
 
