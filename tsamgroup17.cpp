@@ -3,7 +3,6 @@
 //
 // Command line: ./chat_server 4000 
 //
-// Code based on code from Jacky Mallett (jacky@ru.is)
 //
 #include <stdio.h>
 #include <errno.h>
@@ -95,7 +94,6 @@ std::map<std::string, Client*> groupClients; // Lookup table for group ID to Cli
 // Open socket for specified port.
 //
 // Returns -1 if unable to create the socket for any reason.
-
 int open_socket(int portno)
 {
    struct sockaddr_in sk_addr;   // address settings for bind()
@@ -153,7 +151,7 @@ int open_socket(int portno)
    }
 }
 
-
+// Close the client connection and remove the client from the list of open sockets
 void closeClient(int clientSocket, fd_set *openSockets, int *maxfds)
 {
     // Print client information before closing the connection
@@ -216,10 +214,17 @@ void sendMessage(int sock, const std::string &message) {
     formattedMessage += message;
     formattedMessage += EOT;
 
+    //Make sure the message size does not exceed 5000 bytes
+    if (formattedMessage.size() > 5000) {
+        std::cerr << "Message size exceeds 5000 bytes" << std::endl;
+        return;
+    }
+
+    // Send the message
     send(sock, formattedMessage.c_str(), formattedMessage.size(), 0);
 }
 
-//Creating the "SERVERS" command back to server
+// Helper function for Creating the "SERVERS" command back to server
 std::string createServersResponse() {
     std::string response = "SERVERS";
 
@@ -234,6 +239,7 @@ std::string createServersResponse() {
     return response;
 }
 
+// Send the SERVERS response with all connected servers to the server
 void sendServersResponse(int serverSocket) {
     // Build the SERVERS response
     std::string response = createServersResponse();
@@ -242,9 +248,11 @@ void sendServersResponse(int serverSocket) {
     sendMessage(serverSocket, response);
 }
 
-
 // Process command from Server to server
 void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds, char *buffer){
+    (void)openSockets;
+    (void)maxfds;
+    
     //Removing SOH and EOT characters
     std::string message(buffer);
     if (message.front() == SOH) {
@@ -290,10 +298,11 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds, char *buf
 
     } else if (tokens[0] == "SERVERS") {
         printf("Received SERVERS command from server\n");
-        // Send the SERVERS response
         // Collect information from the SERVERS command about connected servers
         // Add servers from the SERVERS command to the connectedServers list
         //Server command format: SERVERS,group_id,ip_address,port;group_id,ip_address,port;...
+        
+        //for each server in the response, add to connectedServers list
         for (size_t i = 1; i < tokens.size(); i += 3) {
             if (i + 2 < tokens.size()) { // Ensure there are enough tokens
                 std::string group_id = tokens[i];
@@ -309,7 +318,88 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds, char *buf
                 connectedServers.push_back(Server(ip_address, port, group_id));
             }
         }
-    } else {
+    } else if (tokens[0] == "GETMSGS") {
+        printf("Received GETMSGS command from server\n");
+        // Other server is requesting a messages
+        // format of the message: MSG,group_id
+        // format of message to send to another server: SENDMSG,<TO GROUP ID>,<FROM GROUP ID>,<Message content>
+
+        if (tokens.size() >= 2) {
+            std::string groupId = tokens[1];
+
+            // Check if there are messages in the group message queue
+            if (groupMessages.find(groupId) != groupMessages.end() && !groupMessages[groupId].empty()) {
+                // Send the first message on the queue
+                std::string message = groupMessages[groupId].front();
+                groupMessages[groupId].pop();
+
+                std::string fromGroupId = serverGroupId; // Server's group ID
+
+                // Send the message to the server
+                std::string response = "SENDMSG," + groupId + "," + fromGroupId + "," + message;
+
+                //printing for debugging
+                std::cout << "Sending message to server: " << response << std::endl;
+
+                //using the sendMessage function to format and send the message
+                sendMessage(serverSocket, response);
+            } else {
+                // No messages on the queue
+                std::string noMessage = "NO_MSG," + groupId;
+                send(serverSocket, noMessage.c_str(), noMessage.size(), 0);
+            }
+        } else {
+            std::string errorMsg = "ERROR,GETMSGS: GETMSGS requires GroupID";
+            send(serverSocket, errorMsg.c_str(), errorMsg.size(), 0);
+        }
+    } else if (tokens[0] == "SENDMSG") {
+        printf("Received SENDMSG command from server\n");
+        // Check if the message is to my group, if so, send it to the client
+        // format of message to send to another server: SENDMSG,<TO GROUP ID>,<FROM GROUP ID>,<Message content>
+
+        if (tokens.size() >= 4) {
+            std::string toGroupId = tokens[1];
+            std::string fromGroupId = tokens[2];
+            std::string message = tokens[3];
+
+            // Check if the message is for my group
+            if (toGroupId == serverGroupId) {
+                
+                // Send the message to client
+                // format of message to send to client: MSG,<FromGroupID>,<Message content>
+                std::string response = "MSG," + fromGroupId + "," + message;
+                send(serverSocket, response.c_str(), response.size(), 0);
+                
+            } else {
+                // message is not for my group, send it to the next server
+                // Send the message to the next server
+                // format of message to send to another server: SENDMSG,<TO GROUP ID>,<FROM GROUP ID>,<Message content>
+                std::string response = "SENDMSG," + toGroupId + "," + fromGroupId + "," + message;
+                
+                
+                std::map<std::string, int> serverSockets; // Map group_id to socket
+                //
+                if (serverSockets.find(toGroupId) != serverSockets.end()) {
+                    int targetSocket = serverSockets[toGroupId];
+                    sendMessage(targetSocket, response);
+                } else {
+                    // can not forward message to the next server since it is not connected
+                    // store the message in the group message queue
+                    printf("Cannot forward message, Storing message in the group message queue\n");
+                    groupMessages[toGroupId].push(message);
+                    
+                }
+                
+
+                
+                sendMessage(serverSocket, response);
+            }
+        } else {
+            std::string errorMsg = "ERROR,SENDMSG: SENDMSG requires ToGroupID, FromGroupID, and Message";
+            send(serverSocket, errorMsg.c_str(), errorMsg.size(), 0);
+        }
+        
+    }else {
         std::cout << "Unknown command from server: " << buffer << std::endl;
     }
 
@@ -351,79 +441,9 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds, char *buf
     {
         clients[clientSocket]->name = tokens[1];
     }
-    else if ((tokens[0].compare("CONNECTTO") == 0) && (tokens.size() == 2))
-    {   
-        // client gives server port and asks server to connect to another server on the network
-        std::cout << "Processing CONNECTTO command" << std::endl;
-        
-    }
-    else if (tokens[0].compare("LEAVE") == 0)
-    {
-        std::cout << "Processing LEAVE command" << std::endl;
-        closeClient(clientSocket, openSockets, maxfds);
-    }
-    else if (tokens[0].compare("WHO") == 0)
-    {
-        std::cout << "Who is logged on" << std::endl;
-        std::string msg;
-
-        for (auto const &names : clients)
-        {
-            msg += names.second->name + ",";
-        }
-        send(clientSocket, msg.c_str(), msg.length() - 1, 0);
-    }
-    else if ((tokens[0].compare("MSG") == 0) && (tokens[1].compare("ALL") == 0))
-    {
-        std::string msg;
-        for (auto i = tokens.begin() + 2; i != tokens.end(); i++)
-        {
-            msg += *i + " ";
-        }
-
-        for (auto const &pair : clients)
-        {
-            send(pair.second->sock, msg.c_str(), msg.length(), 0);
-        }
-    }
-    else if (tokens[0].compare("MSG") == 0)
-    {
-        for (auto const &pair : clients)
-        {
-            if (pair.second->name.compare(tokens[1]) == 0)
-            {
-                std::string msg;
-                for (auto i = tokens.begin() + 2; i != tokens.end(); i++)
-                {
-                    msg += *i + " ";
-                }
-                send(pair.second->sock, msg.c_str(), msg.length(), 0);
-            }
-        }
-    }
-    else if (tokens[0].compare("HELO") == 0)
-    {
-        if (tokens.size() == 2)
-        {
-            std::string fromGroupId = tokens[1];
-            clients[clientSocket]->group_id = fromGroupId;
-            groupClients[fromGroupId] = clients[clientSocket];
-
-            // Store the server information
-            connectedServers.push_back(Server(clients[clientSocket]->ip_address, clients[clientSocket]->port, fromGroupId));
-
-            // Construct the SERVERS response
-            std::string response = "Response from server: SERVERS";
-            for (const auto &server : connectedServers)
-            {
-                response += "," + server.group_id + "," + server.ip_address + "," + std::to_string(serverPort) + ";";
-            }
-            send(clientSocket, response.c_str(), response.size(), 0);
-        }
-    }
     else if (tokens[0].compare("LISTSERVERS") == 0)
     {
-        // Construct the SERVERS response
+        // Construct the SERVERS response and send it back to client
         std::string response = "Response from server: LISTSERVERS";
         for (const auto &server : connectedServers)
         {
@@ -431,23 +451,19 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds, char *buf
         }
         send(clientSocket, response.c_str(), response.size(), 0);
     }
+    // Client wants to send a message to a group
     else if (tokens[0].compare("SENDMSG") == 0) {
-        if(token.size() >= 3) {
+        if(tokens.size() >= 3) {
 
-            std::string groupId = tokens[1];
+            // Send the message to the SENDMSG server command for processing
+            serverCommand(clientSocket, openSockets, maxfds, buffer);
 
-            std::string message = tokens[2];
 
-            //Placeholder for later making sure message starts and ends with correct SOH...
-
-            groupMessages[groupId].push(message);
-
-            //send ACK?
         }
     }
     else if (tokens[0].compare("GETMSG") == 0) {
         //looks for messages in the group message queue 
-        if(token.size() >= 2) {
+        if(tokens.size() >= 2) {
 
             std::string groupId = tokens[1];
 
@@ -479,6 +495,8 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds, char *buf
         std::cout << "Unknown command from client:" << buffer << std::endl;
     }
 }
+
+// Connect to a server with the given IP address and port
 int connectToServer(const std::string& ip, int port) {
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0) {
@@ -503,16 +521,21 @@ int connectToServer(const std::string& ip, int port) {
     return sock;
 }
 
+// Send a formatted HELO message to the server
 void sendHeloMessage(int sock) {
     std::string heloCommand = "HELO," + serverGroupId; // Construct HELO message with the server's group ID
     sendMessage(sock, heloCommand); // Send the HELO message using the existing sendMessage function
     std::cout << "Sent: " << heloCommand << std::endl;
 }
+
+// Send a KEEPALIVE message to the server
 void sendKeepAlive(int sock, int newMessages) {
     std::string keepAliveCommand = "KEEPALIVE," + std::to_string(newMessages);
     sendMessage(sock, keepAliveCommand);
     std::cout << "Sent: " << keepAliveCommand << std::endl;
 }
+
+// Periodically send KEEPALIVE messages to the server
 void periodicKeepAlive(int sock) {
     while (true) {
         std::this_thread::sleep_for(std::chrono::minutes(1)); // Sleep for one minute
@@ -525,6 +548,7 @@ void periodicKeepAlive(int sock) {
     }
 }
 
+// Get the IP address of the server
 std::string getServerIP() {
     struct ifaddrs *interfaces, *iface;
     std::string ip_address = "127.0.0.1";  // Default to localhost
@@ -551,6 +575,7 @@ std::string getServerIP() {
 
     return ip_address;
 }
+
 
 int main(int argc, char *argv[])
 {
@@ -665,7 +690,7 @@ int main(int argc, char *argv[])
 
                 printf("Client connected on server: %d\n", clientSock);
             }
-            // Now check for commands from clients
+            // Now check for commands from clients/Servers
             std::list<Client *> disconnectedClients;
             while (n-- > 0)
             {
