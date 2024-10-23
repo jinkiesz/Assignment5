@@ -77,7 +77,7 @@ int main(int argc, char* argv[])
    bool finished;                   
    int set = 1;                              // Toggle for setsockopt
 
-   if(argc != 3)
+   if(argc != 2)
    {
         printf("Usage: chat_client <ip  port>\n");
         printf("Ctrl-C to terminate\n");
