@@ -162,7 +162,7 @@ void closeClient(int clientSocket, fd_set *openSockets, int *maxfds)
         std::cout << "Socket: " << client->sock << std::endl;
         std::cout << "IP Address: " << client->ip_address << std::endl;
         std::cout << "Port: " << client->port << std::endl;
-        std::cout << "Group ID: " << client->group_id << std::endl;
+
     }
     else
     {
@@ -229,13 +229,12 @@ std::string createServersResponse() {
     std::string response = "SERVERS";
 
     // Adding to SERVERS COMMAND
-    response += "," + serverGroupId + "," + A17serverIpAddress + "," + std::to_string(serverPort) + ";";
+    response += "," + serverGroupId + "," + serverIpAddress+ "," + std::to_string(serverPort) + ";";
 
     // Add connected servers' information
     for (const auto &server : connectedServers) {
         response += server.group_id + "," + server.ip_address + "," + std::to_string(server.port) + ";";
     }
-
     return response;
 }
 
@@ -270,9 +269,14 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds, char *buf
         tokens.push_back(token);
     }
 
+
     // Print debugging output in the correct order
-    std::cout << "Received command: " << tokens[0] << std::endl;
-    std::cout << "Full command: " << buffer << std::endl;
+    // print just the command, not the whole message and the group it comes from
+    std::cout << "Recieved command: " << tokens[0] << std::endl;
+    // print group it comes from
+    // add a new line at the end of the buffer
+    std::cout << "Full command: " << buffer << std::endl << std::endl;
+
 
     //Hello command processing
     if (tokens[0] == "HELO" && tokens.size() >= 2) {
@@ -297,7 +301,8 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds, char *buf
         }
 
     } else if (tokens[0] == "SERVERS") {
-        printf("Received SERVERS command from server\n");
+        printf("**Servers command acknowledged**\n");
+        // Send the SERVERS response
         // Collect information from the SERVERS command about connected servers
         // Add servers from the SERVERS command to the connectedServers list
         //Server command format: SERVERS,group_id,ip_address,port;group_id,ip_address,port;...
@@ -314,7 +319,7 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds, char *buf
                     std::cerr << "Invalid port number: " << tokens[i + 2] << std::endl;
                     continue; // Skip this iteration
                 }
-
+            
                 connectedServers.push_back(Server(ip_address, port, group_id));
             }
         }
@@ -553,28 +558,6 @@ std::string getServerIP() {
     struct ifaddrs *interfaces, *iface;
     std::string ip_address = "127.0.0.1";  // Default to localhost
 
-    if (getifaddrs(&interfaces) == 0) {  // Get interfaces
-        for (iface = interfaces; iface != nullptr; iface = iface->ifa_next) {
-            if (iface->ifa_addr && iface->ifa_addr->sa_family == AF_INET) { // Check for IPv4
-                if (!(iface->ifa_flags & IFF_LOOPBACK)) {  // Skip loopback interface
-                    char host[NI_MAXHOST];
-                    const int family = iface->ifa_addr->sa_family;
-                    if (getnameinfo(iface->ifa_addr,
-                                    (family == AF_INET) ? sizeof(struct sockaddr_in) :
-                                                          sizeof(struct sockaddr_in6),
-                                    host, NI_MAXHOST,
-                                    nullptr, 0, NI_NUMERICHOST) == 0) {
-                        ip_address = host;  // Get the first non-loopback IPv4 address
-                        break;
-                    }
-                }
-            }
-        }
-        freeifaddrs(interfaces); // Free memory
-    }
-
-    return ip_address;
-}
 
 
 int main(int argc, char *argv[])
@@ -597,12 +580,11 @@ int main(int argc, char *argv[])
         exit(0);
     }
 
-    A17serverIpAddress = getServerIP();
-    std::cout << "Server IP Address: " << A17serverIpAddress << std::endl;
 
     serverGroupId = "A5_17";
     serverIpAddress = "130.208.246.249";
     serverPort = atoi(argv[1]);
+    std::cout << "Server IP Address: " << serverIpAddress << std::endl;
 
     // Setup socket for server to listen to
 
@@ -630,24 +612,23 @@ int main(int argc, char *argv[])
     if (remoteServerSock != -1) {
         FD_SET(remoteServerSock, &openSockets);
         maxfds = std::max(maxfds, remoteServerSock);
-        printf("Connected to remote server\n");
+        // connected to remote server ip: 
+        std:: cout << "Connected to remote server" << std::endl;
         sendHeloMessage(remoteServerSock);
     }
 
     // while connected keep checking server command
-    serverCommand(remoteServerSock, &openSockets, &maxfds, "Helo");
+    serverCommand(remoteServerSock, &openSockets, &maxfds, buffer);
     // print connectedservers list
     std::thread keepAliveThread(periodicKeepAlive, remoteServerSock);
     keepAliveThread.detach();
-
 
     // Create a new client object for the remote server
     Client *remoteServerClinet = new Client(remoteServerSock, "130.208.246.249", 5001);
     //add client1 to clinet map
     clients[remoteServerSock] = remoteServerClinet;
 
-
-    
+    //print connected servers list
     // Main server loop - accept and handle client connections
     while (!finished)
     {
@@ -681,7 +662,8 @@ int main(int argc, char *argv[])
                 std::string clientIp = inet_ntoa(client.sin_addr);
                 int clientPort = ntohs(client.sin_port);
                 // SEND HELO HERE
-                sendHeloMessage(remoteServerSock);
+                sendHeloMessage(clientSock);
+            
                 // create a new client to store information.
                 clients[clientSock] = new Client(clientSock, clientIp, clientPort);
 
@@ -689,6 +671,7 @@ int main(int argc, char *argv[])
                 n--;
 
                 printf("Client connected on server: %d\n", clientSock);
+                
             }
             // Now check for commands from clients/Servers
             std::list<Client *> disconnectedClients;
@@ -700,7 +683,7 @@ int main(int argc, char *argv[])
 
                     if (FD_ISSET(client->sock, &readSockets))
                     {
-                        std:: cout << std:: to_string (client->sock) << std::endl;
+                        
                         // recv() == 0 means client has closed connection
                         if (recv(client->sock, buffer, sizeof(buffer), MSG_DONTWAIT) == 0)
                         {
