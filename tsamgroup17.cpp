@@ -166,6 +166,7 @@ int open_socket(int portno)
 // Close the client connection and remove the client from the list of open sockets
 void closeClient(int clientSocket, fd_set *openSockets, int *maxfds)
 {
+    logMessage("Closing connection for client: " + std::to_string(clientSocket));
     // Print client information before closing the connection
     if (clients.find(clientSocket) != clients.end())
     {
@@ -291,8 +292,12 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds, char *buf
 
     //Hello command processing
     if (tokens[0] == "HELO" && tokens.size() >= 2) {
+        printf("**Server** HELO command acknowledged\n");
+        logMessage("**Server** HELO command acknowledged");
+
         std::string fromGroupId = tokens[1];
 
+        // Get the IP address and port of the connecting server
         struct sockaddr_in peer_addr;
         socklen_t peer_addr_len = sizeof(peer_addr);
         if (getpeername(serverSocket, (struct sockaddr*)&peer_addr, &peer_addr_len) == 0) {
@@ -308,14 +313,14 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds, char *buf
                 logMessage("Added server " + fromGroupId + " at " + fromIpAddress + ":" + std::to_string(fromPort));
 
                 // Optionally send a response back to the connected server
-                logMessage("Sending SERVERS command to server");
+                logMessage("Sending back SERVERS command to server after receving HELO");
                 sendServersResponse(serverSocket);
             }
         }
 
     } else if (tokens[0] == "SERVERS") {
-        printf("**Servers command acknowledged**\n");
-        logMessage("Servers command acknowledged");
+        printf("**Server** Servers command acknowledged\n");
+        logMessage("**Server** Servers command acknowledged");
         // Send the SERVERS response
         // Collect information from the SERVERS command about connected servers
         // Add servers from the SERVERS command to the connectedServers list
@@ -335,10 +340,13 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds, char *buf
                 
                 // Add the server to the connectedServers list
                 connectedServers.push_back(Server(ip_address, port, group_id));
+                std::cout << "Added server " << group_id << " at " << ip_address << ":" << port << std::endl;
+                logMessage("Added server " + group_id + " at " + ip_address + ":" + std::to_string(port));
             }
         }
     } else if (tokens[0] == "GETMSGS") {
-        printf("Received GETMSGS command from server\n");
+        printf("**Server** GETMSGS command acknowledged\n");
+        logMessage("**Server** GETMSGS command acknowledged");
         // Other server is requesting a messages
         // format of the message: MSG,group_id
         // format of message to send to another server: SENDMSG,<TO GROUP ID>,<FROM GROUP ID>,<Message content>
@@ -359,6 +367,7 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds, char *buf
 
                 //printing for debugging
                 std::cout << "Sending message to server: " << response << std::endl;
+                logMessage("Sending message to server: " + response);
 
                 //using the sendMessage function to format and send the message
                 sendMessage(serverSocket, response);
@@ -366,13 +375,15 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds, char *buf
                 // No messages on the queue
                 std::string noMessage = "NO_MSG," + groupId;
                 send(serverSocket, noMessage.c_str(), noMessage.size(), 0);
+                logMessage("No messages in the group message queue");
             }
         } else {
             std::string errorMsg = "ERROR,GETMSGS: GETMSGS requires GroupID";
             send(serverSocket, errorMsg.c_str(), errorMsg.size(), 0);
         }
     } else if (tokens[0] == "SENDMSG") {
-        printf("Received SENDMSG command from server\n");
+        printf("**Server** SENDMSG command acknowledged**\n");
+        logMessage("**Server** SENDMSG command acknowledged");
         // Check if the message is to my group, if so, send it to the client
         // format of message to send to another server: SENDMSG,<TO GROUP ID>,<FROM GROUP ID>,<Message content>
 
@@ -414,7 +425,8 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds, char *buf
         }
         
     } else if (tokens[0] == "STATUSREQ" && tokens.size() >= 1) {
-        printf("Received STATUSREQ command from server\n");
+        printf("**Server** STATUSREQ command acknowledged\n");
+        logMessage("**Server** STATUSREQ command acknowledged");
         // send the command STATUSRESP to followed by  "," and all messages in the group message queue
         // format of message to send to another server: STATUSRESP,<group_id of message 1>,<message1>,<group_id of message 2>,<message2>...
         std::string response = "STATUSRESP";
@@ -426,10 +438,27 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds, char *buf
                 response += "," + groupId + "," + message;
             }
         }
+        std::cout << "Sending STATUSRESP command to server: " << response << std::endl;
+        logMessage("Sending STATUSRESP command to server: " + response);
         sendMessage(serverSocket, response);
         
     } else if (tokens[0] == "STATUSRESP") {
-        printf("Received STATUSRESP command from server\n");
+        printf("**Server** STATUSRESP command acknowledged\n");
+        logMessage("**Server** STATUSRESP command acknowledged");
+
+        // Store the messages in the group message queue
+        for (size_t i = 1; i < tokens.size(); i += 2) {
+            if (i + 1 < tokens.size()) { // Ensure there are enough tokens
+                std::string groupId = tokens[i];
+                std::string message = tokens[i + 1];
+                groupMessages[groupId].push(message);
+            }
+            else {
+                std::cerr << "Invalid STATUSRESP command: " << message << std::endl;
+                std::cerr << "Not enough tokens in STATUSRESP command" << std::endl;
+                logMessage("Invalid STATUSRESP command: " + message);
+            }
+        }
 
         
     }else {
@@ -468,12 +497,16 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds, char *buf
 
     // Print debugging output in the correct order
     printf("Handling command from trusted client\n");
+    logMessage("Handling command from trusted client");
     std::cout << "Received command: " << tokens[0] << std::endl;
     std::cout << "Full command: " << buffer << std::endl;
 
-    if (tokens[0].compare("LISTSERVERS") == 0)
-    {
+    if (tokens[0].compare("LISTSERVERS") == 0) {
+        printf("**Client** LISTSERVERS command acknowledged\n");
+        logMessage("**Client** LISTSERVERS command acknowledged");
+        
         // Construct the SERVERS response and send it back to client
+        logMessage("Sending back LISTSERVERS command to client");
         std::string response = "Response from server: LISTSERVERS";
         for (const auto &server : connectedServers)
         {
@@ -493,7 +526,8 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds, char *buf
             // format of message to send to another server: SENDMSG,<TO GROUP ID>,<FROM GROUP ID>,<Message content>
             std::string response = "SENDMSG," + toGroupId + "," + fromGroupId + "," + message;
             
-            printf("Sending message to server:\n");
+            printf("Sending message to server:\n", response.c_str());
+            logMessage("Sending message to server: " + response);
 
             // Send the message to the SENDMSG server command for processing
             char *mutableBuffer = strdup(response.c_str());

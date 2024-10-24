@@ -4,7 +4,7 @@
 
 
 Welcome to Assignment5 done by group A5_17
-    Group A5_17: Kristinn99? and Larak22@ru.is
+    Group A5_17: Kristinng20@ru.is and Larak22@ru.is
 
 Note!: All of the files must be placed in the TSAM Server 
 Compile: to compile both of these files write "make" in the terminal, it will compile both of the files

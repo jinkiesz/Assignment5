@@ -1,0 +1,42 @@
+[2024-10-24 18:55:45] Server started
+[2024-10-24 18:55:45] Server IP Address: 130.208.246.249
+[2024-10-24 18:55:45] Listening on port: 4000
+[2024-10-24 18:56:47] Server IP Address: 130.208.246.249
+[2024-10-24 18:56:51] Server Port: 5001
+[2024-10-24 18:56:51] Connected to remote server
+[2024-10-24 18:56:51] Sent HELO message to remote server
+[2024-10-24 18:58:55] Server started
+[2024-10-24 18:58:55] Server IP Address: 130.208.246.249
+[2024-10-24 18:58:55] Listening on port: 4000
+[2024-10-24 18:58:59] Server IP Address: 130.208.246.249
+[2024-10-24 18:59:02] Server Port: 5001
+[2024-10-24 18:59:02] Connected to remote server
+[2024-10-24 18:59:02] Sent HELO message to remote server
+[2024-10-24 18:59:08] Server started
+[2024-10-24 18:59:08] Server IP Address: 130.208.246.249
+[2024-10-24 18:59:08] Listening on port: 4000
+[2024-10-24 18:59:12] Server IP Address: 130.208.246.249
+[2024-10-24 18:59:14] Server Port: 5001
+[2024-10-24 18:59:14] Connected to remote server
+[2024-10-24 18:59:14] Sent HELO message to remote server
+[2024-10-24 18:59:28] Server started
+[2024-10-24 18:59:28] Server IP Address: 130.208.246.249
+[2024-10-24 18:59:28] Listening on port: 4000
+[2024-10-24 18:59:34] Server IP Address: 130.208.246.249
+[2024-10-24 18:59:40] Server Port: 5001
+[2024-10-24 18:59:40] Connected to remote server
+[2024-10-24 18:59:40] Sent HELO message to remote server
+[2024-10-24 18:59:44] Server started
+[2024-10-24 18:59:44] Server IP Address: 130.208.246.249
+[2024-10-24 18:59:44] Listening on port: 4000
+[2024-10-24 18:59:48] Server IP Address: 130.208.246.249
+[2024-10-24 18:59:59] Server Port: 5001
+[2024-10-24 18:59:59] Connected to remote server
+[2024-10-24 18:59:59] Sent HELO message to remote server
+[2024-10-24 19:03:37] Server started
+[2024-10-24 19:03:37] Server IP Address: 130.208.246.249
+[2024-10-24 19:03:37] Listening on port: 4000
+[2024-10-24 19:03:43] Server IP Address: 130.208.246.249
+[2024-10-24 19:03:47] Server Port: 5001
+[2024-10-24 19:03:47] Connected to remote server
+[2024-10-24 19:03:47] Sent HELO message to remote server
