@@ -8,7 +8,7 @@ Welcome to Assignment5 done by group A5_17
 
 Note!: All of the files must be placed in the TSAM Server 
 Compile: to compile both of these files write "make" in the terminal, it will compile both of the files
-There are two executable files. client.cpp and tsamgroup17.cpp and one Makefile
+Files: There are two executable files. client.cpp and tsamgroup17.cpp and one Makefile
 
 
 Server Information, file(tsamgroup17.cpp):
@@ -16,9 +16,10 @@ Server Information, file(tsamgroup17.cpp):
     Running the server:
         Step1. to run the server first you need to compile the file by writing make in the terminal
         Step2. to execute the server write the name of the file and then the port you wish to open a socket on: ./tsamgroup17 <port> 
+        Step3. Once youve run the Server a server_log.txt file should had been created thats gonna log the information
         info. after that you should see confirmation on what ip address your server is on and what port youve opened on a socket
-        Step3. input ip of the server you want to remotely connect to, once youve input that you should get asked for the port number of that server. 
-        Step4. congrats youve (hopefully) been connected and should had sent and recieved a HELO and SERVERS command 
+        Step4. input ip of the server you want to remotely connect to, once youve input that you should get asked for the port number of that server. 
+        Step5. congrats youve (hopefully) been connected and should had sent and recieved a HELO and SERVERS command 
 
     Commands Implemented in Server:
         Send HELO: sends HELO to anyone that connects to the server or anyone the server connects to
