@@ -291,7 +291,6 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds, char *buf
 
     //Hello command processing
     if (tokens[0] == "HELO" && tokens.size() >= 2) {
-        logMessage("Received HELO command from server Processing");
         std::string fromGroupId = tokens[1];
 
         struct sockaddr_in peer_addr;
@@ -494,7 +493,7 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds, char *buf
             // format of message to send to another server: SENDMSG,<TO GROUP ID>,<FROM GROUP ID>,<Message content>
             std::string response = "SENDMSG," + toGroupId + "," + fromGroupId + "," + message;
             
-            printf("Sending message to server: %s\n");
+            printf("Sending message to server:\n");
 
             // Send the message to the SENDMSG server command for processing
             char *mutableBuffer = strdup(response.c_str());
@@ -649,11 +648,11 @@ int main(int argc, char *argv[])
 
 
     // lets ask the user for the server ip address and port and then put it in the remoteserversock
-    std::cout << "Enter the server IP address: ";
+    std::cout << "Enter the IP address of the server to connect to: ";
     std::cin >> serverIP;
     logMessage("Server IP Address: " + serverIP);
     
-    std::cout << "Enter the server port: ";
+    std::cout << "Enter that servers port: ";
     std::cin >> remoteserverPort;
     logMessage("Server Port: " + std::to_string(remoteserverPort));
 

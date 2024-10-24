@@ -6,8 +6,9 @@
 Welcome to Assignment5 done by group A5_17
     Group A5_17: Kristinn99? and Larak22@ru.is
 
+Note!: All of the files must be placed in the TSAM Server 
 Compile: to compile both of these files write "make" in the terminal, it will compile both of the files
-There are two executable files. client.cpp and tsamgroup17.cpp
+There are two executable files. client.cpp and tsamgroup17.cpp and one Makefile
 
 
 Server Information, file(tsamgroup17.cpp):
@@ -27,6 +28,7 @@ Server Information, file(tsamgroup17.cpp):
         GETMSGS: ?
         SENDMSG: ?
 
+    Note!: The server does not run locally and has to be placed in the TSAM server 
 
 Client Information, file(client.cpp):
     ? dno whats been done ?
