@@ -1,9 +1,8 @@
 //
 // Simple chat client for TSAM-409
 //
-// Command line: ./chat_client 4000 
+// Command line: ./chat_client 127.0.0.1 4000
 //
-// Author: Jacky Mallett (jacky@ru.is)
 //
 #include <stdio.h>
 #include <errno.h>
@@ -51,33 +50,71 @@ void listenServer(int serverSocket)
     }
 }
 
-void handleHELO(int serverSocket)
-{
-    int nwrite;                               // No. bytes written to server
-    char buffer[1025];                        // buffer for writing to server
 
-    bzero(buffer, sizeof(buffer));
-    strcpy(buffer, "HELO,A_17\n");              // Include group number 17 in the message
+// function for client to send command to server
+void clientCommand(int serverSocket, std::string command) {
+    //Parsing the command
+    std::vector<std::string> tokens;
+    std::stringstream stream(command);
+    std::string token;
 
-    nwrite = send(serverSocket, buffer, strlen(buffer), 0);
+    // Split command from client into tokens for parsing
+    while(std::getline(stream, token, ',')) {
+        tokens.push_back(token);
+    }
 
-    if (nwrite == -1)
+    // Trim trailing newline characters from the last token
+    if (!tokens.empty() && !tokens.back().empty() && tokens.back().back() == '\n')
     {
-        perror("send() to server failed: ");
+        tokens.back().pop_back();
+    }
+
+    //Printing the command
+    std::cout << "Received command: " << tokens[0] << std::endl;
+
+
+   //Handling HELO command
+    if(tokens[0] == "secret_HELO") {
+        printf("HELO command received\n");
+         std::string fromGroupId = tokens[1];
+         std::string response = "HELO," + fromGroupId;
+         send(serverSocket, response.c_str(), response.size(), 0);
+    }
+    else if (tokens[0] == "secret_MSG") {
+        printf("MSG command received\n");
+        std::string groupId = tokens[1];
+        std::string message = tokens[2];
+        std::string response = "MSG," + groupId + "," + message;
+
+        send(serverSocket, response.c_str(), response.size(), 0);
+    }
+    else if (tokens[0] == "secret_SENDMSG") {
+        // format: SENDMSG,GROUP ID,<message contents> 
+        // sending SENDMSG command to server for server to process
+        printf("SENDMSG command received\n");
+        std::string groupId = tokens[1];
+        std::string message = tokens[2];
+        std::string response = "SENDMSG," + groupId + "," + message;
+
+        send(serverSocket, response.c_str(), response.size(), 0);
+        
+    }
+    else {
+        std::string errorMsg = "ERROR client command not recognized\n";
     }
 }
+
 
 int main(int argc, char* argv[])
 {
    struct addrinfo hints, *svr;              // Network host entry for server
    struct sockaddr_in serv_addr;           // Socket address for server
    int serverSocket;                         // Socket used for server 
-   int nwrite;                               // No. bytes written to server
    char buffer[1025];                        // buffer for writing to server
    bool finished;                   
    int set = 1;                              // Toggle for setsockopt
 
-   if(argc != 2)
+   if(argc != 3)
    {
         printf("Usage: chat_client <ip  port>\n");
         printf("Ctrl-C to terminate\n");
@@ -130,7 +167,7 @@ int main(int argc, char* argv[])
          exit(0);
        }
    }
-   handleHELO(serverSocket);
+   //handleHELO(serverSocket);
     // Listen and print replies from server
    std::thread serverThread(listenServer, serverSocket);
 
@@ -139,15 +176,27 @@ int main(int argc, char* argv[])
    {
        bzero(buffer, sizeof(buffer));
 
-       fgets(buffer, sizeof(buffer), stdin);
+        // Read input from stdin
+        if (fgets(buffer, sizeof(buffer), stdin) == NULL) {
+            perror("fgets failed");
+            break;
+        }
 
-       nwrite = send(serverSocket, buffer, strlen(buffer),0);
+        // Remove the trailing newline character from the input
+        buffer[strcspn(buffer, "\n")] = 0;
 
-       if(nwrite  == -1)
-       {
-           perror("send() to server failed: ");
-           finished = true;
-       }
+        // Convert buffer to std::string
+        std::string command(buffer);
+
+        // Check for exit command
+        if (command == "exit") {
+            printf("Exiting client.\n");
+            finished = true;
+            break;
+        }
+
+        // Call clientCommand with the input command
+        clientCommand(serverSocket, command);
 
    }
 }
