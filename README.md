@@ -30,3 +30,8 @@ Server Information, file(tsamgroup17.cpp):
 
 Client Information, file(client.cpp):
     ? dno whats been done ?
+
+
+Extra Points to claim:
+(a) (1 point) Submit your solution for the client/server protocol implementation within the first week.
+(e) (2 points) Or: Write a brief - no more than 1 page - description listing the several security issues of the botnet.
