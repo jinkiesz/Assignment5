@@ -30,7 +30,9 @@
 #include <unistd.h>
 #include <queue>
 #include <mutex>
-
+#include <fstream>
+#include <iostream>
+#include <ctime>
 
 #define SOH 0x01 // Start of Header (SOH)
 #define EOT 0x04 // End of message (EOT)
@@ -47,14 +49,11 @@ std::string A17serverIpAddress;
 #define SOCK_NONBLOCK O_NONBLOCK
 #endif
 
-
-
-
 #define BACKLOG  5          // Allowed length of queue of waiting connections
+std::ofstream logFile;
 std::map<int, int> messagesWaiting; 
 std::map<std::string, std::queue<std::string>> groupMessages;
 int serverPort; // Global variable to store the server port
-
 
 
 // Simple class for handling connections from clients.
@@ -91,8 +90,23 @@ std::list<Server> connectedServers;
 std::map<int, Client*> clients; // Lookup table for per Client information
 std::map<std::string, Client*> groupClients; // Lookup table for group ID to Client
 
-// Open socket for specified port.
-//
+void initializeLogFile() {
+    logFile.open("server_log.txt", std::ofstream::out | std::ofstream::app);
+    if (!logFile.is_open()) {
+        std::cerr << "Failed to open log file!" << std::endl;
+        exit(1); // Handle error opening log file
+    }
+}
+void logMessage(const std::string& message) {
+    // Get current timestamp
+    std::time_t now = std::time(nullptr);
+    char timestamp[100];
+    std::strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", std::localtime(&now));
+
+    // Write to log file
+    logFile << "[" << timestamp << "] " << message << std::endl;
+}
+
 // Returns -1 if unable to create the socket for any reason.
 int open_socket(int portno)
 {
@@ -115,10 +129,8 @@ int open_socket(int portno)
     return(-1);
    }
 #endif
-
    // Turn on SO_REUSEADDR to allow socket to be quickly reused after 
    // program exit.
-
    if(setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &set, sizeof(set)) < 0)
    {
       perror("Failed to set SO_REUSEADDR:");
@@ -162,11 +174,11 @@ void closeClient(int clientSocket, fd_set *openSockets, int *maxfds)
         std::cout << "Socket: " << client->sock << std::endl;
         std::cout << "IP Address: " << client->ip_address << std::endl;
         std::cout << "Port: " << client->port << std::endl;
-
     }
     else
     {
         std::cerr << "Error: Client not found in clients map." << std::endl;
+        logMessage("Error: Client not found in clients map.");
         return;
     }
     //Removing from groupClients map if it exists
@@ -176,6 +188,7 @@ void closeClient(int clientSocket, fd_set *openSockets, int *maxfds)
     }
 
     printf("Client closed connection: %d\n", clientSocket);
+    logMessage("Client closed connection: " + std::to_string(clientSocket));
 
     // If this client's socket is maxfds then the next lowest
     // one has to be determined. Socket fd's can be reused by the Kernel,
@@ -201,7 +214,6 @@ void closeClient(int clientSocket, fd_set *openSockets, int *maxfds)
     {
         groupClients.erase(clients[clientSocket]->group_id);
     }
-
     // Remove from clients map
     delete clients[clientSocket]; // Free the memory allocated for the client
     clients.erase(clientSocket);
@@ -217,6 +229,7 @@ void sendMessage(int sock, const std::string &message) {
     //Make sure the message size does not exceed 5000 bytes
     if (formattedMessage.size() > 5000) {
         std::cerr << "Message size exceeds 5000 bytes" << std::endl;
+        logMessage("Message size exceeds 5000 bytes");
         return;
     }
 
@@ -269,17 +282,16 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds, char *buf
         tokens.push_back(token);
     }
 
-
-    // Print debugging output in the correct order
-    // print just the command, not the whole message and the group it comes from
+    // prints recieved command
     std::cout << "Recieved command: " << tokens[0] << std::endl;
-    // print group it comes from
-    // add a new line at the end of the buffer
+    logMessage("Received command from server: " + tokens[0]);
+    // prints whole recieved command
     std::cout << "Full command: " << buffer << std::endl << std::endl;
-
+    logMessage("Full message from server " + message);
 
     //Hello command processing
     if (tokens[0] == "HELO" && tokens.size() >= 2) {
+        logMessage("Received HELO command from server Processing");
         std::string fromGroupId = tokens[1];
 
         struct sockaddr_in peer_addr;
@@ -294,20 +306,21 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds, char *buf
                 // Store the connecting server's information
                 connectedServers.push_back(Server(fromIpAddress, fromPort, fromGroupId));
                 std::cout << "Added server " << fromGroupId << " at " << fromIpAddress << ":" << fromPort << std::endl;
+                logMessage("Added server " + fromGroupId + " at " + fromIpAddress + ":" + std::to_string(fromPort));
 
                 // Optionally send a response back to the connected server
+                logMessage("Sending SERVERS command to server");
                 sendServersResponse(serverSocket);
             }
         }
 
     } else if (tokens[0] == "SERVERS") {
         printf("**Servers command acknowledged**\n");
+        logMessage("Servers command acknowledged");
         // Send the SERVERS response
         // Collect information from the SERVERS command about connected servers
         // Add servers from the SERVERS command to the connectedServers list
-        //Server command format: SERVERS,group_id,ip_address,port;group_id,ip_address,port;...
-        
-        //for each server in the response, add to connectedServers list
+ 
         for (size_t i = 1; i < tokens.size(); i += 3) {
             if (i + 2 < tokens.size()) { // Ensure there are enough tokens
                 std::string group_id = tokens[i];
@@ -317,9 +330,11 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds, char *buf
                     port = std::stoi(tokens[i + 2]);
                 } catch (const std::invalid_argument& e) {
                     std::cerr << "Invalid port number: " << tokens[i + 2] << std::endl;
+                    logMessage("Invalid port number: " + tokens[i + 2]);
                     continue; // Skip this iteration
                 }
-            
+                
+                // Add the server to the connectedServers list
                 connectedServers.push_back(Server(ip_address, port, group_id));
             }
         }
@@ -392,9 +407,6 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds, char *buf
                     groupMessages[toGroupId].push(message);
                     
                 }
-                
-
-                
                 sendMessage(serverSocket, response);
             }
         } else {
@@ -546,6 +558,7 @@ int connectToServer(const std::string& ip, int port) {
 
     if (connect(sock, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0) {
         perror("Connection Failed");
+        logMessage("Connection to remote server failed");
         return -1;
     }
 
@@ -597,26 +610,32 @@ int main(int argc, char *argv[])
     std::string serverIP;
     int remoteserverPort;
 
+    initializeLogFile();
+    logMessage("Server started");
+    // Example usage to log a message
     if (argc != 2)
     {
         printf("Usage: chat_server <ip port>\n");
         exit(0);
     }
-
+    
 
     serverGroupId = "A5_17";
     serverIpAddress = "130.208.246.249";
     serverPort = atoi(argv[1]);
     std::cout << "Server IP Address: " << serverIpAddress << std::endl;
+    logMessage("Server IP Address: " + serverIpAddress);
 
     // Setup socket for server to listen to
 
     listenSock = open_socket(serverPort);
     printf("Listening on port: %d\n", serverPort);
+    logMessage("Listening on port: " + std::to_string(serverPort));
 
     if (listen(listenSock, BACKLOG) < 0)
     {
         printf("Listen failed on port %s\n", argv[1]);
+        logMessage("Listen failed on port: " + std::to_string(serverPort));
         exit(0);
     }
     else
@@ -632,9 +651,11 @@ int main(int argc, char *argv[])
     // lets ask the user for the server ip address and port and then put it in the remoteserversock
     std::cout << "Enter the server IP address: ";
     std::cin >> serverIP;
+    logMessage("Server IP Address: " + serverIP);
     
     std::cout << "Enter the server port: ";
     std::cin >> remoteserverPort;
+    logMessage("Server Port: " + std::to_string(remoteserverPort));
 
     // Connect to remote server 
     int remoteServerSock = connectToServer(serverIP, remoteserverPort);
@@ -644,11 +665,14 @@ int main(int argc, char *argv[])
         maxfds = std::max(maxfds, remoteServerSock);
         // connected to remote server ip: 
         std:: cout << "Connected to remote server" << std::endl;
+        logMessage("Connected to remote server");
         sendHeloMessage(remoteServerSock);
+        logMessage("Sent HELO message to remote server");
     }
 
     // while connected keep checking server command
     serverCommand(remoteServerSock, &openSockets, &maxfds, buffer);
+    logMessage("Server command received from remote server");
     // print connectedservers list
     std::thread keepAliveThread(periodicKeepAlive, remoteServerSock);
     keepAliveThread.detach();
@@ -672,6 +696,7 @@ int main(int argc, char *argv[])
         if (n < 0)
         {
             perror("select failed - closing down\n");
+            logMessage("Select failed - closing down");
             finished = true;
         }
         else
@@ -682,19 +707,25 @@ int main(int argc, char *argv[])
                 clientLen = sizeof(client);
                 clientSock = accept(listenSock, (struct sockaddr *)&client, &clientLen);
                 printf("New Connection\n");
+                logMessage("New Connection");
                 printf("accept***\n");
+                logMessage("accept***");
                 printf("Client connected on server: %d\n", clientSock);
+                logMessage("Client connected on server: " + std::to_string(clientSock));
                 // Add new client to the list of open sockets
                 FD_SET(clientSock, &openSockets);
 
                 // And update the maximum file descriptor
                 maxfds = std::max(maxfds, clientSock);
+                logMessage("Maxfds: " + std::to_string(maxfds));
 
                 // Get client IP address and port
                 std::string clientIp = inet_ntoa(client.sin_addr);
+                logMessage("Client IP Address: " + clientIp);
                 int clientPort = ntohs(client.sin_port);
                 // SEND HELO HERE
                 sendHeloMessage(clientSock);
+                logMessage("Sent HELO message to client");
             
                 // create a new client to store information.
                 clients[clientSock] = new Client(clientSock, clientIp, clientPort);
