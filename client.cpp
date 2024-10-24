@@ -58,8 +58,15 @@ void clientCommand(int serverSocket, std::string command) {
     std::stringstream stream(command);
     std::string token;
 
+    // Split command from client into tokens for parsing
     while(std::getline(stream, token, ',')) {
         tokens.push_back(token);
+    }
+
+    // Trim trailing newline characters from the last token
+    if (!tokens.empty() && !tokens.back().empty() && tokens.back().back() == '\n')
+    {
+        tokens.back().pop_back();
     }
 
     //Printing the command
@@ -69,15 +76,15 @@ void clientCommand(int serverSocket, std::string command) {
    //Handling HELO command
     if(tokens[0] == "secret_HELO") {
         printf("HELO command received\n");
-         std::string fromGroupId = command.substr(5);
-         std::string response = "HELO," + fromGroupId + "\n";
+         std::string fromGroupId = tokens[1];
+         std::string response = "HELO," + fromGroupId;
          send(serverSocket, response.c_str(), response.size(), 0);
     }
     else if (tokens[0] == "secret_MSG") {
         printf("MSG command received\n");
         std::string groupId = tokens[1];
         std::string message = tokens[2];
-        std::string response = "MSG," + groupId + "," + message + "\n";
+        std::string response = "MSG," + groupId + "," + message;
 
         send(serverSocket, response.c_str(), response.size(), 0);
     }
@@ -87,7 +94,7 @@ void clientCommand(int serverSocket, std::string command) {
         printf("SENDMSG command received\n");
         std::string groupId = tokens[1];
         std::string message = tokens[2];
-        std::string response = "SENDMSG," + groupId + "," + message + "\n";
+        std::string response = "SENDMSG," + groupId + "," + message;
 
         send(serverSocket, response.c_str(), response.size(), 0);
         
@@ -103,12 +110,11 @@ int main(int argc, char* argv[])
    struct addrinfo hints, *svr;              // Network host entry for server
    struct sockaddr_in serv_addr;           // Socket address for server
    int serverSocket;                         // Socket used for server 
-   int nwrite;                               // No. bytes written to server
    char buffer[1025];                        // buffer for writing to server
    bool finished;                   
    int set = 1;                              // Toggle for setsockopt
 
-   if(argc != 2)
+   if(argc != 3)
    {
         printf("Usage: chat_client <ip  port>\n");
         printf("Ctrl-C to terminate\n");

@@ -1,0 +1,19 @@
+Potential security issues with the botnet.
+
+-	Man in the middle attacks, since messages are not encrypted while being sent anyone can spoof the message.
+
+-	Since I am not authenticating me to my server connection malicious users can impersonate a client and pretend to be another group for example, gaining axes to the network.
+
+-	No data integrity check in transmission since there is no signature being validated on the sender and receiver end so that messages can be altered on the way.
+
+-	DoS Attacks, my server does not incorporate proper handling of being overwhelmed by requests from other servers or clients which can lead to server meltdown.
+
+-	Since there is no segmentation except for the segmentation of the TA’s server this network can be classified as a flat network architecture, meaning that if there is a breach of one node, it endangers the entire network.
+
+Security implications that could improve the network:
+
+-	Authentication of clients and servers.
+
+-	Using TLS or SSL to encrypt data in transit.
+
+-	Employing a VPN channels for security in anonymit

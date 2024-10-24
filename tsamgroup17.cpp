@@ -370,10 +370,8 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds, char *buf
             // Check if the message is for my group
             if (toGroupId == serverGroupId) {
                 
-                // Send the message to client
-                // format of message to send to client: MSG,<FromGroupID>,<Message content>
-                std::string response = "MSG," + fromGroupId + "," + message;
-                send(serverSocket, response.c_str(), response.size(), 0);
+                // Store the message in the group message marked for the client
+                groupMessages[fromGroupId].push(message);
                 
             } else {
                 // message is not for my group, send it to the next server
@@ -403,6 +401,25 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds, char *buf
             std::string errorMsg = "ERROR,SENDMSG: SENDMSG requires ToGroupID, FromGroupID, and Message";
             send(serverSocket, errorMsg.c_str(), errorMsg.size(), 0);
         }
+        
+    } else if (tokens[0] == "STATUSREQ" && tokens.size() >= 1) {
+        printf("Received STATUSREQ command from server\n");
+        // send the command STATUSRESP to followed by  "," and all messages in the group message queue
+        // format of message to send to another server: STATUSRESP,<group_id of message 1>,<message1>,<group_id of message 2>,<message2>...
+        std::string response = "STATUSRESP";
+        for (auto &group : groupMessages) {
+            std::string groupId = group.first;
+            while (!group.second.empty()) {
+                std::string message = group.second.front();
+                group.second.pop();
+                response += "," + groupId + "," + message;
+            }
+        }
+        sendMessage(serverSocket, response);
+        
+    } else if (tokens[0] == "STATUSRESP") {
+        printf("Received STATUSRESP command from server\n");
+
         
     }else {
         std::cout << "Unknown command from server: " << buffer << std::endl;
@@ -439,14 +456,11 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds, char *buf
     }
 
     // Print debugging output in the correct order
+    printf("Handling command from trusted client\n");
     std::cout << "Received command: " << tokens[0] << std::endl;
     std::cout << "Full command: " << buffer << std::endl;
 
-    if ((tokens[0].compare("CONNECT") == 0) && (tokens.size() == 2))
-    {
-        clients[clientSocket]->name = tokens[1];
-    }
-    else if (tokens[0].compare("LISTSERVERS") == 0)
+    if (tokens[0].compare("LISTSERVERS") == 0)
     {
         // Construct the SERVERS response and send it back to client
         std::string response = "Response from server: LISTSERVERS";
@@ -460,8 +474,20 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds, char *buf
     else if (tokens[0].compare("SENDMSG") == 0) {
         if(tokens.size() >= 3) {
 
+            // modifies the command: SENDMSG,<TO GROUP ID>,<FROM GROUP ID>,<Message content>
+            std::string toGroupId = tokens[1];
+            std::string fromGroupId = serverGroupId;
+            std::string message = tokens[2];
+
+            // format of message to send to another server: SENDMSG,<TO GROUP ID>,<FROM GROUP ID>,<Message content>
+            std::string response = "SENDMSG," + toGroupId + "," + fromGroupId + "," + message;
+            
+            printf("Sending message to server: %s\n");
+
             // Send the message to the SENDMSG server command for processing
-            serverCommand(clientSocket, openSockets, maxfds, buffer);
+            char *mutableBuffer = strdup(response.c_str());
+            serverCommand(clientSocket, openSockets, maxfds, mutableBuffer);
+            free(mutableBuffer);
 
 
         }
