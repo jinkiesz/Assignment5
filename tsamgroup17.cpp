@@ -577,6 +577,7 @@ int connectToServer(const std::string& ip, int port) {
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0) {
         perror("Cannot create socket");
+        logMessage("Cannot create socket");
         return -1;
     }
 
@@ -586,6 +587,7 @@ int connectToServer(const std::string& ip, int port) {
 
     if (inet_pton(AF_INET, ip.c_str(), &serverAddr.sin_addr) <= 0) {
         perror("Invalid address/ Address not supported");
+        logMessage("Invalid address/ Address not supported");
         return -1;
     }
 
@@ -603,6 +605,7 @@ void sendHeloMessage(int sock) {
     std::string heloCommand = "HELO," + serverGroupId; // Construct HELO message with the server's group ID
     sendMessage(sock, heloCommand); // Send the HELO message using the existing sendMessage function
     std::cout << "Sent: " << heloCommand << std::endl;
+    logMessage("Sent: " + heloCommand);
 }
 
 // Send a KEEPALIVE message to the server
@@ -610,6 +613,7 @@ void sendKeepAlive(int sock, int newMessages) {
     std::string keepAliveCommand = "KEEPALIVE," + std::to_string(newMessages);
     sendMessage(sock, keepAliveCommand);
     std::cout << "Sent: " << keepAliveCommand << std::endl;
+    logMessage("Sent: " + keepAliveCommand);
 }
 
 // Periodically send KEEPALIVE messages to the server
@@ -700,7 +704,6 @@ int main(int argc, char *argv[])
         std:: cout << "Connected to remote server" << std::endl;
         logMessage("Connected to remote server");
         sendHeloMessage(remoteServerSock);
-        logMessage("Sent HELO message to remote server");
     }
 
     // while connected keep checking server command
@@ -755,10 +758,10 @@ int main(int argc, char *argv[])
                 // Get client IP address and port
                 std::string clientIp = inet_ntoa(client.sin_addr);
                 logMessage("Client IP Address: " + clientIp);
+
                 int clientPort = ntohs(client.sin_port);
                 // SEND HELO HERE
                 sendHeloMessage(clientSock);
-                logMessage("Sent HELO message to client");
             
                 // create a new client to store information.
                 clients[clientSock] = new Client(clientSock, clientIp, clientPort);
@@ -785,6 +788,7 @@ int main(int argc, char *argv[])
                         {
                             // print buffer
                             printf("Buffer: %s\n", buffer);
+                            logMessage("Buffer: " + std::string(buffer));
                             disconnectedClients.push_back(client);
                             closeClient(client->sock, &openSockets, &maxfds);
                         }
