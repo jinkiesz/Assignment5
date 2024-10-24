@@ -65,41 +65,54 @@ void clientCommand(int serverSocket, std::string command) {
         tokens.push_back(token);
     }
 
-    // Trim trailing newline characters from the last token
-    if (!tokens.empty() && !tokens.back().empty() && tokens.back().back() == '\n')
-    {
-        tokens.back().pop_back();
+
+    if (tokens.size() < 2) {
+        std::cerr << "Invalid command format." << std::endl;
+        return;
     }
 
     //Printing the command
     std::cout << "Received command: " << tokens[0] << std::endl;
 
 
-   //Handling HELO command
-    if(tokens[0] == "secret_HELO") {
-        printf("HELO command received\n");
-         std::string fromGroupId = tokens[1];
-         std::string response = "HELO," + fromGroupId;
-         send(serverSocket, response.c_str(), response.size(), 0);
-    }
-    else if (tokens[0] == "secret_MSG") {
-        printf("MSG command received\n");
-        std::string groupId = tokens[1];
-        std::string message = tokens[2];
-        std::string response = "MSG," + groupId + "," + message;
+   // Check for command type
+    if (tokens[0] == "GETMSG") {
+        // format: GETMSG,GROUP ID
+        printf("GETMSG command received\n");
 
+        std::string groupId = tokens[1];
+        
+        std::string response = "secret_GETMSG," + groupId;
         send(serverSocket, response.c_str(), response.size(), 0);
+        
+        
     }
-    else if (tokens[0] == "secret_SENDMSG") {
+    else if (tokens[0] == "GET_MSG_RESPONSE") {
+        printf("MSG_RESPONSE command from server received\n");
+        // format: MSG_RESPONSE,MESSAGE
+        //Response from server with message to my client
+
+        //Trimming command from message and printing message
+        std::string message = tokens[1];
+        std::cout << "Message from server: " << message << std::endl;
+
+    }
+    else if (tokens[0] == "SENDMSG") {
         // format: SENDMSG,GROUP ID,<message contents> 
         // sending SENDMSG command to server for server to process
         printf("SENDMSG command received\n");
         std::string groupId = tokens[1];
         std::string message = tokens[2];
-        std::string response = "SENDMSG," + groupId + "," + message;
+        std::string response = "secret_SENDMSG," + groupId + "," + message;
 
         send(serverSocket, response.c_str(), response.size(), 0);
         
+    }
+    else if (tokens[0] == "LISTSERVERS") {
+        // format: LISTSERVERS
+        printf("LISTSERVERS command received\n");
+        std::string response = "secret_LISTSERVERS";
+        send(serverSocket, response.c_str(), response.size(), 0);
     }
     else {
         std::string errorMsg = "ERROR client command not recognized\n";

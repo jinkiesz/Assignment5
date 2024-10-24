@@ -471,57 +471,58 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds, char *buf
 // Process command from client on the server
 void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds, char *buffer)
 {
-    // Check if the message is from a server (contains SOH and EOT)
-    if (buffer[0] == SOH) {
-        // This is a server command
-        serverCommand(clientSocket, openSockets, maxfds, buffer);
-        return;
+    //Removing SOH and EOT characters
+    std::string message(buffer);
+    if (message.front() == SOH) {
+        message.erase(0, 1); // Remove SOH
     }
-    
-    
-    std::vector<std::string> tokens;
-    std::string token;
+    if (message.back() == EOT) {
+        message.pop_back(); // Remove EOT
+    }
 
-    // Split command from client into tokens for parsing
-    std::stringstream stream(buffer);
+    std::vector<std::string> tokens;
+    std::stringstream stream(message);
+    std::string token;
 
     while (std::getline(stream, token, ',')) {
         tokens.push_back(token);
     }
-
-    // Trim trailing newline characters from the last token
-    if (!tokens.empty() && !tokens.back().empty() && tokens.back().back() == '\n')
-    {
-        tokens.back().pop_back();
-    }
+    
 
     // Print debugging output in the correct order
-    printf("Handling command from trusted client\n");
-    logMessage("Handling command from trusted client");
     std::cout << "Received command: " << tokens[0] << std::endl;
     std::cout << "Full command: " << buffer << std::endl;
 
-    if (tokens[0].compare("LISTSERVERS") == 0) {
-        printf("**Client** LISTSERVERS command acknowledged\n");
-        logMessage("**Client** LISTSERVERS command acknowledged");
-        
+    if (tokens[0].compare("secret_LISTSERVERS") == 0) {
+        printf("Handling LISTSERVERS command from trusted client\n");
+        logMessage("Handling LISTSERVERS command from trusted client");
+
         // Construct the SERVERS response and send it back to client
-        logMessage("Sending back LISTSERVERS command to client");
         std::string response = "Response from server: LISTSERVERS";
         for (const auto &server : connectedServers)
         {
             response += "," + server.group_id + "," + server.ip_address + "," + std::to_string(serverPort) + ";";
         }
+        logMessage("Sending back LISTSERVERS command to client\nResponse sent to client: " + response);
         send(clientSocket, response.c_str(), response.size(), 0);
     }
     // Client wants to send a message to a group
-    else if (tokens[0].compare("SENDMSG") == 0) {
+    else if (tokens[0].compare("secret_SENDMSG") == 0) {
+        printf("Handling SENDMSG command from trusted client\n");
+        logMessage("Handling SENDMSG command from trusted client");
+        
         if(tokens.size() >= 3) {
 
             // modifies the command: SENDMSG,<TO GROUP ID>,<FROM GROUP ID>,<Message content>
             std::string toGroupId = tokens[1];
             std::string fromGroupId = serverGroupId;
             std::string message = tokens[2];
+
+            //Check if message is to my client
+            //Store it directly in the group message queue
+            if (toGroupId == serverGroupId) {
+                groupMessages[fromGroupId].push(message);
+            }
 
             // format of message to send to another server: SENDMSG,<TO GROUP ID>,<FROM GROUP ID>,<Message content>
             std::string response = "SENDMSG," + toGroupId + "," + fromGroupId + "," + message;
@@ -533,11 +534,13 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds, char *buf
             char *mutableBuffer = strdup(response.c_str());
             serverCommand(clientSocket, openSockets, maxfds, mutableBuffer);
             free(mutableBuffer);
-
-
+        } else {
+            std::string errorMsg = "ERROR,secret_SENDMSG: secret_SENDMSG requires GroupID and Message";
+            send(clientSocket, errorMsg.c_str(), errorMsg.size(), 0);
         }
-    }
-    else if (tokens[0].compare("GETMSG") == 0) {
+    }else if (tokens[0].compare("secret_GETMSG") == 0) {
+        printf("Handling GETMSG command from trusted client\n");
+        logMessage("Handling GETMSG command from trusted client");
         //looks for messages in the group message queue 
         if(tokens.size() >= 2) {
 
@@ -551,7 +554,7 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds, char *buf
                 groupMessages[groupId].pop();
 
                 //Sending message to the client
-                std::string response = "MSG," + groupId + "," + message;
+                std::string response = "GET_MSG_RESPONSE" + groupId + "," + message;
                 send(clientSocket, response.c_str(), response.size(), 0);       //Might want to switch to a seperate function later
             }
             //No messages on queue
@@ -565,10 +568,10 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds, char *buf
             send(clientSocket, errorMsg.c_str(), errorMsg.size(), 0);
         }
 
-    }
-    else
+    }else
     {
-        std::cout << "Unknown command from client:" << buffer << std::endl;
+        // not a recognized command from my client
+        serverCommand(clientSocket, openSockets, maxfds, buffer);
     }
 }
 
