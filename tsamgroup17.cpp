@@ -543,7 +543,8 @@ int main(int argc, char *argv[])
     struct sockaddr_in client;
     socklen_t clientLen;
     char buffer[1025]; // buffer for reading from clients
-
+    std::string serverIP;
+    int remoteserverPort;
 
     if (argc != 2)
     {
@@ -577,8 +578,15 @@ int main(int argc, char *argv[])
     finished = false;
 
 
+    // lets ask the user for the server ip address and port and then put it in the remoteserversock
+    std::cout << "Enter the server IP address: ";
+    std::cin >> serverIP;
+    
+    std::cout << "Enter the server port: ";
+    std::cin >> remoteserverPort;
+
     // Connect to remote server 
-    int remoteServerSock = connectToServer("130.208.246.249", 5001);
+    int remoteServerSock = connectToServer(serverIP, remoteserverPort);
     std::cout << "remoteserversock:  " << std::to_string(remoteServerSock) << std::endl;
     if (remoteServerSock != -1) {
         FD_SET(remoteServerSock, &openSockets);
@@ -595,7 +603,7 @@ int main(int argc, char *argv[])
     keepAliveThread.detach();
 
     // Create a new client object for the remote server
-    Client *remoteServerClinet = new Client(remoteServerSock, "130.208.246.249", 5001);
+    Client *remoteServerClinet = new Client(remoteServerSock, serverIP, remoteserverPort);
     //add client1 to clinet map
     clients[remoteServerSock] = remoteServerClinet;
 
@@ -622,7 +630,9 @@ int main(int argc, char *argv[])
             {
                 clientLen = sizeof(client);
                 clientSock = accept(listenSock, (struct sockaddr *)&client, &clientLen);
+                printf("New Connection\n");
                 printf("accept***\n");
+                printf("Client connected on server: %d\n", clientSock);
                 // Add new client to the list of open sockets
                 FD_SET(clientSock, &openSockets);
 
@@ -641,7 +651,7 @@ int main(int argc, char *argv[])
                 // Decrement the number of sockets waiting to be dealt with
                 n--;
 
-                printf("Client connected on server: %d\n", clientSock);
+                
                 
             }
 
